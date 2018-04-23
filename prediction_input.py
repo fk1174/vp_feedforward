@@ -73,8 +73,7 @@ def build_tfrecord_input(training=True):
     for i in range(FLAGS.sequence_length): # 10
         image_name = 'move/' + str(i) + '/image/encoded'
         action_name = 'move/' + str(i) + '/commanded_pose/vec_pitch_yaw'
-        state_name = 'move/' + str(i) + '/endeffector/vec_pitch_yaw'
-        if FLAGS.use_action: # Whether or not to give the state+action to the model
+        if FLAGS.use_action: # Whether or not to give the action to the model
             features = {image_name: tf.FixedLenFeature([1], tf.string),
                                     action_name: tf.FixedLenFeature([STATE_DIM], tf.float32)}
         else:
@@ -120,4 +119,6 @@ def build_tfrecord_input(training=True):
 
         zeros_batch = tf.zeros([FLAGS.batch_size, FLAGS.sequence_length, STATE_DIM])
         return image_batch, zeros_batch
+
+    
 

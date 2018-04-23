@@ -27,7 +27,7 @@ logging.basicConfig(format='[%(asctime)s] (%(filename)s): |%(levelname)s| %(mess
 
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
-
+form moving_mnist_reader import mnist_tfrecord_input
 from prediction_input import build_tfrecord_input
 from prediction_model import construct_model
 from prediction_model import construct_model_ff
