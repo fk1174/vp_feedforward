@@ -28,6 +28,7 @@ from tensorflow.python.platform import flags
 
 from prediction_input import build_tfrecord_input
 from prediction_model import construct_model
+from prediction_model import construct_model_ff
 
 # How often to record tensorboard summaries.
 SUMMARY_INTERVAL = 40
@@ -39,7 +40,7 @@ VAL_INTERVAL = 200
 SAVE_INTERVAL = 2000
 
 # tf record data location:
-DATA_DIR = 'push/push_train'
+DATA_DIR = '../tfrecord/push_train'
 
 # local output directory
 OUT_DIR = './log'
@@ -56,8 +57,8 @@ flags.DEFINE_string('pretrained_model', '',
 flags.DEFINE_integer('sequence_length', 10,
                      'sequence length, including context frames.')
 flags.DEFINE_integer('context_frames', 2, '# of frames before predictions.')
-flags.DEFINE_integer('use_state', 1,
-                     'Whether or not to give the state+action to the model')
+flags.DEFINE_integer('use_action', 1,
+                     'Whether or not to give the action to the model')
 
 flags.DEFINE_string('model', 'CDNA',
                     'model architecture to use - CDNA, DNA, or STP')
@@ -105,7 +106,6 @@ class Model(object):
   def __init__(self,
                images=None,
                actions=None,
-               states=None,
                sequence_length=None,
                reuse_scope=None,
                prefix=None):
@@ -122,38 +122,24 @@ class Model(object):
     # Split into timesteps.
     actions = tf.split(axis=1, num_or_size_splits=int(actions.get_shape()[1]), value=actions)
     actions = [tf.squeeze(act) for act in actions]
-    states = tf.split(axis=1, num_or_size_splits=int(states.get_shape()[1]), value=states)
-    states = [tf.squeeze(st) for st in states]
+
     images = tf.split(axis=1, num_or_size_splits=int(images.get_shape()[1]), value=images)  # axis =1 !!!!!!
     images = [tf.squeeze(img) for img in images]
-    print("----%s:np.shape()")
 
     if reuse_scope is None: # if training
-      gen_images, gen_states = construct_model( # len(gen_images) = 9
+      gen_images = construct_model_ff( # len(gen_images) = 9
           images,
           actions,
-          states,
           iter_num=self.iter_num,
           k=FLAGS.schedsamp_k,
-          use_state=FLAGS.use_state,
-          num_masks=FLAGS.num_masks,
-          cdna=FLAGS.model == 'CDNA',
-          dna=FLAGS.model == 'DNA',
-          stp=FLAGS.model == 'STP',
           context_frames=FLAGS.context_frames)
     else:  # If it's a validation or test model.
       with tf.variable_scope(reuse_scope, reuse=True):
-        gen_images, gen_states = construct_model(
+        gen_images = construct_model_ff(
             images,
             actions,
-            states,
             iter_num=self.iter_num,
             k=FLAGS.schedsamp_k,
-            use_state=FLAGS.use_state,
-            num_masks=FLAGS.num_masks,
-            cdna=FLAGS.model == 'CDNA',
-            dna=FLAGS.model == 'DNA',
-            stp=FLAGS.model == 'STP',
             context_frames=FLAGS.context_frames)
 
     # L2 loss, PSNR for eval. Peak signal noise ratio
@@ -173,14 +159,6 @@ class Model(object):
       summaries.append(tf.summary.scalar(prefix + '_psnr' + str(i), psnr_i))
       loss += recon_cost
 
-    for i, state, gen_state in zip(
-                                range(len(gen_states)),
-                                states[FLAGS.context_frames:], # 2, frames before predictions.
-                                gen_states[FLAGS.context_frames - 1:]):
-      state_cost = mean_squared_error(state, gen_state) * 1e-4
-      summaries.append(
-          tf.summary.scalar(prefix + '_state_cost' + str(i), state_cost))
-      loss += state_cost
     summaries.append(tf.summary.scalar(prefix + '_psnr_all', psnr_all))
     self.psnr_all = psnr_all
 
@@ -198,14 +176,14 @@ def main(unused_argv):
 
   print('Constructing models and inputs.')
   with tf.variable_scope('model', reuse=None) as training_scope:
-    images, actions, states = build_tfrecord_input(training=True)  # (32, 10, 64, 64, 3)---(32, 10, 5)---(32, 10, 5)
+    images, actions = build_tfrecord_input(training=True)  # (32, 10, 64, 64, 3)---(32, 10, 5)---(32, 10, 5)
     tf.logging.info("----")
-    model = Model(images, actions, states, FLAGS.sequence_length,
+    model = Model(images, actions, FLAGS.sequence_length,
                   prefix='train')
 
   with tf.variable_scope('val_model', reuse=None):
-    val_images, val_actions, val_states = build_tfrecord_input(training=False)
-    val_model = Model(val_images, val_actions, val_states,
+    val_images, val_actions, = build_tfrecord_input(training=False)
+    val_model = Model(val_images, val_actions,
                       FLAGS.sequence_length, training_scope, prefix='val')
 
   print('Constructing saver.')

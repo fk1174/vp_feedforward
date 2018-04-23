@@ -14,9 +14,14 @@
 # ==============================================================================
 
 """Model architecture for predictive model, including CDNA, DNA, and STP."""
-
+import hobotrl as hrl
 import numpy as np
 import tensorflow as tf
+import logging
+tf_logger = logging.getLogger('tensorflow')
+ch = tf_logger.handlers[0]
+ch.setFormatter(logging.Formatter('%(asctime)s (%(name)s) |%(levelname)s| %(message)s'))
+tf.logging.set_verbosity(tf.logging.INFO)
 
 import tensorflow.contrib.slim as slim
 from tensorflow.contrib.layers.python import layers as tf_layers
@@ -26,6 +31,106 @@ RELU_SHIFT = 1e-12
 
 # kernel size for DNA and CDNA.
 DNA_KERN_SIZE = 5
+ACTION_DIM = 5
+l2 = 1e-7
+
+def construct_model_ff(images, # oh 15 FeedFroward
+                    actions=None,
+                    use_action=1,
+                    iter_num=-1.0,
+                    k=-1,
+                    context_frames=2):
+  """Build convolutional lstm video predictor using STP, CDNA, or DNA.
+
+  Args:
+    images: tensor of ground truth image sequences
+    actions: tensor of action sequences
+    states: tensor of ground truth state sequences
+    iter_num: tensor of the current training iteration (for sched. sampling)
+    k: constant used for scheduled sampling. -1 to feed in own prediction.
+    use_state: True to include state and action in prediction
+    num_masks: the number of different pixel motion predictions (and
+               the number of masks for each of those predictions)
+    stp: True to use Spatial Transformer Predictor (STP)
+    cdna: True to use Convoluational Dynamic Neural Advection (CDNA)
+    dna: True to use Dynamic Neural Advection (DNA)
+    context_frames: number of ground truth frames to pass in before
+                    feeding in own predictions
+  Returns:
+    gen_images: predicted future image frames
+    gen_states: predicted future states
+
+  Raises:
+    ValueError: if more than one network option specified or more than 1 mask
+    specified for DNA model.
+  """
+
+  batch_size, img_height, img_width, color_channels = images[0].get_shape()[0:4]   # images(10, 32, 64, 64, 3) axis changed
+  lstm_func = basic_conv_lstm_cell
+
+  # Generated robot states and images.
+  gen_images = [], []
+
+  if k == -1:
+    feedself = True
+  else:
+    # Scheduled sampling:
+    # Calculate number of ground-truth frames to pass in.
+    num_ground_truth = tf.to_int32(
+        tf.round(tf.to_float(batch_size) * (k / (k + tf.exp(iter_num / k)))))
+    feedself = False
+
+  for image, action in zip(images[:-1], actions[:-1]): # images[0,1,2,...,8] , no last images[9]  32, 64, 64, 3->9times
+    # Reuse variables after the first timestep.
+    tf.logging.info("-----np.shape(image):%s", np.shape(image)) # 32, 64, 64, 3
+    reuse = bool(gen_images)
+
+    done_warm_start = len(gen_images) > context_frames - 1
+    with slim.arg_scope(
+        [lstm_func, slim.layers.conv2d, slim.layers.fully_connected,
+         tf_layers.layer_norm, slim.layers.conv2d_transpose],
+        reuse=reuse):
+
+      if feedself and done_warm_start:
+        # Feed in generated image.
+        prev_image = gen_images[-1]
+      elif done_warm_start:
+        # Scheduled sampling
+        prev_image = scheduled_sample(image, gen_images[-1], batch_size,
+                                      num_ground_truth)
+      else:
+        # Always feed in ground_truth
+        prev_image = image
+
+      # my network start
+      conv = hrl.utils.Network.conv2ds(prev_image,
+                                     shape=[(64, 8, 2), (128, 6, 2), (128, 6, 2), (128, 4, 2)],
+                                     out_flatten=False,
+                                     activation=tf.nn.relu,
+                                     l2=l2,
+                                     var_scope="conv")
+
+      onehot_action = tf.one_hot(indices=actions, depth=ACTION_DIM, on_value=1.0, off_value=0.0, axis=-1)
+      tiled_action = tf.image.resize_images(tf.reshape(onehot_action, [-1, 1, 1, ACTION_DIM]),
+                                            [conv.shape.as_list()[1], conv.shape.as_list()[2]])
+      concat_conv = tf.concat([conv, tiled_action], axis=-1)
+
+      transited_conv = hrl.utils.Network.conv2ds(concat_conv,
+                                               shape=[(128, 4, 1), (128, 3, 1)],
+                                               out_flatten=False,
+                                               activation=tf.nn.relu,
+                                               l2=l2,
+                                               var_scope="transited_conv")
+
+      output = hrl.utils.Network.conv2ds_transpose(transited_conv,
+                                                            shape=[(128, 4, 2), (128, 6, 2), (128, 6, 2), (3, 8, 2)],
+                                                            activation=tf.nn.relu,
+                                                            l2=l2,
+                                                            var_scope="deconv")
+
+      gen_images.append(output)
+
+  return gen_images
 
 
 def construct_model(images,
@@ -215,7 +320,6 @@ def construct_model(images,
 
   return gen_images, gen_states
 
-
 ## Utility functions
 def stp_transformation(prev_image, stp_input, num_masks):
   """Apply spatial transformer predictor (STP) to previous image.
@@ -240,7 +344,6 @@ def stp_transformation(prev_image, stp_input, num_masks):
     transformed.append(transformer(prev_image, params))
 
   return transformed
-
 
 def cdna_transformation(prev_image, cdna_input, num_masks, color_channels):
   """Apply convolutional dynamic neural advection to previous image.
@@ -289,7 +392,6 @@ def cdna_transformation(prev_image, cdna_input, num_masks, color_channels):
   transformed = tf.unstack(transformed, axis=-1)
   return transformed
 
-
 def dna_transformation(prev_image, dna_input):
   """Apply dynamic neural advection to previous image.
 
@@ -321,6 +423,7 @@ def dna_transformation(prev_image, dna_input):
   return tf.reduce_sum(kernel * inputs, [3], keep_dims=False)
 
 
+
 def scheduled_sample(ground_truth_x, generated_x, batch_size, num_ground_truth):
   """Sample batch with specified mix of ground truth and generated data points.
 
@@ -333,6 +436,10 @@ def scheduled_sample(ground_truth_x, generated_x, batch_size, num_ground_truth):
     New batch with num_ground_truth sampled from ground_truth_x and the rest
     from generated_x.
   """
+  tf.logging.info("-----np.shape(ground_truth_x):%s", np.shape(ground_truth_x))
+  tf.logging.info("-----np.shape(generated_x):%s", np.shape(generated_x)) #=> 0!!!!!!
+  tf.logging.info("-----num_ground_truth:%s", num_ground_truth)
+
   idx = tf.random_shuffle(tf.range(int(batch_size))) #array([ 8,  6, 15, 29,  4,  1, 24, 28,  3,  0, 27, 31,  2, 17, 14,\
                                                      #  21, 26, 30, 16, 13,  5, 12, 11, 23, 20,  7, 18, 19, 25,  9, 22, 10]\
                                                      # ,dtype=int32)
@@ -341,5 +448,5 @@ def scheduled_sample(ground_truth_x, generated_x, batch_size, num_ground_truth):
 
   ground_truth_examps = tf.gather(ground_truth_x, ground_truth_idx)
   generated_examps = tf.gather(generated_x, generated_idx)
-  return tf.dynamic_stitch([ground_truth_idx, generated_idx],
-                           [ground_truth_examps, generated_examps])
+
+  return tf.dynamic_stitch([ground_truth_idx, generated_idx], [ground_truth_examps, generated_examps])

@@ -20,6 +20,11 @@ import os
 
 import numpy as np
 import tensorflow as tf
+import logging
+tf_logger = logging.getLogger('tensorflow')
+ch = tf_logger.handlers[0]
+ch.setFormatter(logging.Formatter('%(asctime)s (%(name)s) |%(levelname)s| %(message)s'))
+tf.logging.set_verbosity(tf.logging.INFO)
 
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
@@ -33,11 +38,12 @@ ORIGINAL_HEIGHT = 512
 COLOR_CHAN = 3
 
 # Default image dimensions.
-IMG_WIDTH = 64
-IMG_HEIGHT = 64
+IMG_WIDTH = 128
+IMG_HEIGHT =128
 
 # Dimension of the state and action.
 STATE_DIM = 5
+ACTION_DIM = 5
 
 
 def build_tfrecord_input(training=True):
@@ -64,16 +70,15 @@ def build_tfrecord_input(training=True):
   reader = tf.TFRecordReader()
   serialized_key, serialized_example = reader.read(filename_queue)
 
-  image_seq, state_seq, action_seq = [], [], []
+  image_seq, action_seq = [], []
 
   for i in range(FLAGS.sequence_length): # 10
     image_name = 'move/' + str(i) + '/image/encoded'
     action_name = 'move/' + str(i) + '/commanded_pose/vec_pitch_yaw'
     state_name = 'move/' + str(i) + '/endeffector/vec_pitch_yaw'
-    if FLAGS.use_state: # Whether or not to give the state+action to the model
+    if FLAGS.use_action: # Whether or not to give the state+action to the model
       features = {image_name: tf.FixedLenFeature([1], tf.string),
-                  action_name: tf.FixedLenFeature([STATE_DIM], tf.float32),
-                  state_name: tf.FixedLenFeature([STATE_DIM], tf.float32)}
+                  action_name: tf.FixedLenFeature([STATE_DIM], tf.float32)}
     else:
       features = {image_name: tf.FixedLenFeature([1], tf.string)}
 
@@ -93,29 +98,28 @@ def build_tfrecord_input(training=True):
     image = tf.cast(image, tf.float32) / 255.0
     image_seq.append(image)
 
-    if FLAGS.use_state:
-      state = tf.reshape(features[state_name], shape=[1, STATE_DIM])
-      state_seq.append(state)
+    if FLAGS.use_action:
       action = tf.reshape(features[action_name], shape=[1, STATE_DIM])
       action_seq.append(action)
 
   image_seq = tf.concat(axis=0, values=image_seq)
 
-  if FLAGS.use_state:
-    state_seq = tf.concat(axis=0, values=state_seq)
+  if FLAGS.use_action:
     action_seq = tf.concat(axis=0, values=action_seq)
-    [image_batch, action_batch, state_batch] = tf.train.batch(
-        [image_seq, action_seq, state_seq],
+    [image_batch, action_batch] = tf.train.batch(
+        [image_seq, action_seq],
         FLAGS.batch_size,
         num_threads=FLAGS.batch_size,
         capacity=100 * FLAGS.batch_size)
-    return image_batch, action_batch, state_batch
+
+    return image_batch, action_batch
   else:
     image_batch = tf.train.batch(
         [image_seq],
         FLAGS.batch_size,
         num_threads=FLAGS.batch_size,
         capacity=100 * FLAGS.batch_size)
+
     zeros_batch = tf.zeros([FLAGS.batch_size, FLAGS.sequence_length, STATE_DIM])
-    return image_batch, zeros_batch, zeros_batch
+    return image_batch, zeros_batch
 
