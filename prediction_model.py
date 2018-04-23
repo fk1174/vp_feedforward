@@ -38,36 +38,11 @@ def construct_model_ff(images, # oh 15 FeedFroward
                     iter_num=-1.0,
                     k=-1,
                     context_frames=2):
-  """Build convolutional lstm video predictor using STP, CDNA, or DNA.
-
-  Args:
-    images: tensor of ground truth image sequences
-    actions: tensor of action sequences
-    states: tensor of ground truth state sequences
-    iter_num: tensor of the current training iteration (for sched. sampling)
-    k: constant used for scheduled sampling. -1 to feed in own prediction.
-    use_state: True to include state and action in prediction
-    num_masks: the number of different pixel motion predictions (and
-               the number of masks for each of those predictions)
-    stp: True to use Spatial Transformer Predictor (STP)
-    cdna: True to use Convoluational Dynamic Neural Advection (CDNA)
-    dna: True to use Dynamic Neural Advection (DNA)
-    context_frames: number of ground truth frames to pass in before
-                    feeding in own predictions
-  Returns:
-    gen_images: predicted future image frames
-    gen_states: predicted future states
-
-  Raises:
-    ValueError: if more than one network option specified or more than 1 mask
-    specified for DNA model.
-  """
-
   batch_size, img_height, img_width, color_channels = images[0].get_shape()[0:4]   # images(10, 32, 64, 64, 3) axis changed
   lstm_func = basic_conv_lstm_cell
 
   # Generated robot states and images.
-  gen_images = [], []
+  gen_images = []
 
   if k == -1:
     feedself = True
@@ -80,55 +55,164 @@ def construct_model_ff(images, # oh 15 FeedFroward
 
   for image, action in zip(images[:-1], actions[:-1]): # images[0,1,2,...,8] , no last images[9]  32, 64, 64, 3->9times
     # Reuse variables after the first timestep.
+    # tf.reset_default_graph()
     logging.warning("-----np.shape(image):%s", np.shape(image)) # 32, 64, 64, 3
     reuse = bool(gen_images)
+    logging.warning("-----reuse:%s", reuse)
+
+    # reuse = True
 
     done_warm_start = len(gen_images) > context_frames - 1
     logging.warning("-----len(gen_images):%s", len(gen_images))
     logging.warning("-----np.shape(gen_images):%s", np.shape(gen_images))
-    with slim.arg_scope(
-        [lstm_func, slim.layers.conv2d, slim.layers.fully_connected,
-         tf_layers.layer_norm, slim.layers.conv2d_transpose],
-        reuse=reuse):
+    # with slim.arg_scope(
+    #     [lstm_func, slim.layers.conv2d, slim.layers.fully_connected,
+    #      tf_layers.layer_norm, slim.layers.conv2d_transpose],
+    #     reuse=reuse):
+    # with slim.arg_scope(
+    #         [tf.contrib.layers.conv2d, tf.contrib.layers.fully_connected,tf.contrib.layers.conv2d_transpose],
+    #         reuse=reuse):
+    with tf.variable_scope("scope1", reuse=reuse):
+        if feedself and done_warm_start:
+            # Feed in generated image.
+            prev_image = gen_images[-1]
+        elif done_warm_start:
+            # Scheduled sampling
+            prev_image = scheduled_sample(image, gen_images[-1], batch_size,
+                                          num_ground_truth)
+        else:
+            # Always feed in ground_truth
+            prev_image = image
 
-      if feedself and done_warm_start:
-        # Feed in generated image.
-        prev_image = gen_images[-1]
-      elif done_warm_start:
-        # Scheduled sampling
-        prev_image = scheduled_sample(image, gen_images[-1], batch_size,
-                                      num_ground_truth)
-      else:
-        # Always feed in ground_truth
-        prev_image = image
+        # tf network
+        # out = tf.layers.conv2d(inputs=image, filters=64, kernel_size=[8, 8],
+        #                        strides=2, padding='same', activation=tf.nn.relu,
+        #                        use_bias=True, kernel_initializer=tf.contrib.layers.xavier_initializer(),
+        #                        # bias_initializer=layers.xavier_initializer(),
+        #                        kernel_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                        bias_regularizer=tf.contrib.layers.l2_regularizer(l2))
+        # out = tf.layers.conv2d(inputs=out, filters=128, kernel_size=[6, 6],
+        #                        strides=2, padding='same', activation=tf.nn.relu,
+        #                        use_bias=True, kernel_initializer=tf.contrib.layers.xavier_initializer(),
+        #                        # bias_initializer=layers.xavier_initializer(),
+        #                        kernel_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                        bias_regularizer=tf.contrib.layers.l2_regularizer(l2))
+        # out = tf.layers.conv2d(inputs=out, filters=128, kernel_size=[6, 6],
+        #                        strides=2, padding='same', activation=tf.nn.relu,
+        #                        use_bias=True, kernel_initializer=tf.contrib.layers.xavier_initializer(),
+        #                        # bias_initializer=layers.xavier_initializer(),
+        #                        kernel_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                        bias_regularizer=tf.contrib.layers.l2_regularizer(l2))
+        # out = tf.layers.conv2d(inputs=out, filters=128, kernel_size=[4, 4],
+        #                        strides=2, padding='same', activation=tf.nn.relu,
+        #                        use_bias=True, kernel_initializer=tf.contrib.layers.xavier_initializer(),
+        #                        # bias_initializer=layers.xavier_initializer(),
+        #                        kernel_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                        bias_regularizer=tf.contrib.layers.l2_regularizer(l2))
+        # conv_fc = tf.contrib.layers.flatten(out)
+        # conv_fc = tf.layers.dense(conv_fc,
+        #                     units=2048,
+        #                     activation=tf.nn.relu,
+        #                     name='fc1',
+        #                     kernel_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                     bias_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                     kernel_initializer=tf.contrib.layers.xavier_initializer(),
+        #                     bias_initializer=tf.contrib.layers.xavier_initializer())
+        # conv_fc = tf.layers.dense(conv_fc,
+        #                           units=2048,
+        #                           activation=tf.nn.relu,
+        #                           name='fc2',
+        #                           kernel_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                           bias_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                           kernel_initializer=tf.contrib.layers.xavier_initializer(),
+        #                           bias_initializer=tf.contrib.layers.xavier_initializer())
+        # action_fc = tf.layers.dense(action,
+        #                     units=2048,
+        #                     activation=tf.nn.relu,
+        #                     name='fc3',
+        #                     kernel_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                     bias_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                     kernel_initializer=tf.contrib.layers.xavier_initializer(),
+        #                     bias_initializer=tf.contrib.layers.xavier_initializer())
+        #
+        # concat_fc = tf.multiply(action_fc, conv_fc)
+        #
+        # concat_fc = tf.layers.dense(concat_fc,
+        #                             units=8192,
+        #                             activation=tf.nn.relu,
+        #                             name='fc4',
+        #                             kernel_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                             bias_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                             kernel_initializer=tf.contrib.layers.xavier_initializer(),
+        #                             bias_initializer=tf.contrib.layers.xavier_initializer())
+        #
+        # concat_deconv = tf.reshape(concat_fc, [32, 128, 8, 8])
+        #
+        # out = tf.layers.conv2d_transpose(inputs=concat_deconv, filters=128, kernel_size=[4, 4],
+        #                                  strides=2, padding='same', activation=tf.nn.relu,
+        #                                  use_bias=True, kernel_initializer=tf.contrib.layers.xavier_initializer(),
+        #                                  # bias_initializer=layers.xavier_initializer(),
+        #                                  kernel_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                                  bias_regularizer=tf.contrib.layers.l2_regularizer(l2))
+        # out = tf.layers.conv2d_transpose(inputs=out, filters=128, kernel_size=[6, 6],
+        #                                  strides=2, padding='same', activation=tf.nn.relu,
+        #                                  use_bias=True, kernel_initializer=tf.contrib.layers.xavier_initializer(),
+        #                                  # bias_initializer=layers.xavier_initializer(),
+        #                                  kernel_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                                  bias_regularizer=tf.contrib.layers.l2_regularizer(l2))
+        # out = tf.layers.conv2d_transpose(inputs=out, filters=128, kernel_size=[6, 6],
+        #                                  strides=2, padding='same', activation=tf.nn.relu,
+        #                                  use_bias=True, kernel_initializer=tf.contrib.layers.xavier_initializer(),
+        #                                  # bias_initializer=layers.xavier_initializer(),
+        #                                  kernel_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                                  bias_regularizer=tf.contrib.layers.l2_regularizer(l2))
+        # output = tf.layers.conv2d_transpose(inputs=out, filters=3, kernel_size=[8, 8],
+        #                                  strides=2, padding='same', activation=tf.nn.relu,
+        #                                  use_bias=True, kernel_initializer=tf.contrib.layers.xavier_initializer(),
+        #                                  # bias_initializer=layers.xavier_initializer(),
+        #                                  kernel_regularizer=tf.contrib.layers.l2_regularizer(l2),
+        #                                  bias_regularizer=tf.contrib.layers.l2_regularizer(l2))
 
-      # my network start
-      conv = hrl.utils.Network.conv2ds(prev_image,
+        # my network start
+
+        # hobotrl network
+        conv_se = hrl.utils.Network.conv2ds(prev_image,
                                      shape=[(64, 8, 2), (128, 6, 2), (128, 6, 2), (128, 4, 2)],
-                                     out_flatten=False,
+                                     out_flatten=True,
                                      activation=tf.nn.relu,
                                      l2=l2,
-                                     var_scope="conv")
+                                     var_scope="conv_se")
 
-      onehot_action = tf.one_hot(indices=actions, depth=ACTION_DIM, on_value=1.0, off_value=0.0, axis=-1)
-      tiled_action = tf.image.resize_images(tf.reshape(onehot_action, [-1, 1, 1, ACTION_DIM]),
-                                            [conv.shape.as_list()[1], conv.shape.as_list()[2]])
-      concat_conv = tf.concat([conv, tiled_action], axis=-1)
+        action_fc = hrl.network.Utils.layer_fcs(action, [], 2048,
+                                                    activation_out=tf.nn.relu,
+                                                    l2=l2,
+                                                    var_scope="action_fc")
+        feature_fc = hrl.network.Utils.layer_fcs(conv_se, [2048], 2048,
+                                                    activation_out=tf.nn.relu,
+                                                    l2=l2,
+                                                    var_scope="feature_fc")
+        concat_fc = tf.multiply(action_fc, feature_fc)
 
-      transited_conv = hrl.utils.Network.conv2ds(concat_conv,
-                                               shape=[(128, 4, 1), (128, 3, 1)],
-                                               out_flatten=False,
-                                               activation=tf.nn.relu,
-                                               l2=l2,
-                                               var_scope="transited_conv")
+        concat = hrl.network.Utils.layer_fcs(concat_fc, [2048], 8192,
+                                                    activation_out=tf.nn.relu,
+                                                    l2=l2,
+                                                    var_scope="concat")
 
-      output = hrl.utils.Network.conv2ds_transpose(transited_conv,
-                                                            shape=[(128, 4, 2), (128, 6, 2), (128, 6, 2), (3, 8, 2)],
-                                                            activation=tf.nn.relu,
-                                                            l2=l2,
-                                                            var_scope="deconv")
+        # 2048 => 128*8*8
+        concat_deconv = tf.reshape(concat, [32, 8, 8, 128])
+        logging.warning("-----np.shape(concat_deconv):%s", np.shape(concat_deconv))
 
-      gen_images.append(output)
+        output = hrl.utils.Network.conv2ds_transpose(concat_deconv,
+                                                   shape=[(128, 4, 2), (128, 6, 2), (128, 6, 2), (3, 8, 2)],
+                                                   activation=tf.nn.relu,
+                                                   l2=l2,
+                                                   var_scope="deconv")
+
+
+        logging.warning("-----np.shape(output):%s", np.shape(output))
+
+
+        gen_images.append(output)
 
   return gen_images
 
@@ -436,9 +520,9 @@ def scheduled_sample(ground_truth_x, generated_x, batch_size, num_ground_truth):
     New batch with num_ground_truth sampled from ground_truth_x and the rest
     from generated_x.
   """
-  logging.warning("-----np.shape(ground_truth_x):%s", np.shape(ground_truth_x))
-  logging.warning("-----np.shape(generated_x):%s", np.shape(generated_x)) #=> (0,)!!!!!! true: (32, 128, 128, 3)
-  logging.warning("-----num_ground_truth:%s", num_ground_truth)
+  # logging.warning("-----np.shape(ground_truth_x):%s", np.shape(ground_truth_x))
+  # logging.warning("-----np.shape(generated_x):%s", np.shape(generated_x)) #=> (0,)!!!!!! true: (32, 128, 128, 3)
+  # logging.warning("-----num_ground_truth:%s", num_ground_truth)
 
   idx = tf.random_shuffle(tf.range(int(batch_size))) #array([ 8,  6, 15, 29,  4,  1, 24, 28,  3,  0, 27, 31,  2, 17, 14,\
                                                      #  21, 26, 30, 16, 13,  5, 12, 11, 23, 20,  7, 18, 19, 25,  9, 22, 10]\
@@ -448,5 +532,10 @@ def scheduled_sample(ground_truth_x, generated_x, batch_size, num_ground_truth):
 
   ground_truth_examps = tf.gather(ground_truth_x, ground_truth_idx)
   generated_examps = tf.gather(generated_x, generated_idx)
+
+  logging.warning("-----ground_truth_idx:%s", ground_truth_idx)
+  logging.warning("-----generated_idx:%s", generated_idx)
+  logging.warning("-----ground_truth_examps:%s", ground_truth_examps)
+  logging.warning("-----generated_examps:%s", generated_examps) # (?, 2048, 128, 3) ==> True: (?, 128, 128, 3)
 
   return tf.dynamic_stitch([ground_truth_idx, generated_idx], [ground_truth_examps, generated_examps])
