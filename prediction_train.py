@@ -39,7 +39,7 @@ VAL_INTERVAL = 200
 SAVE_INTERVAL = 2000
 
 # tf record data location:
-DATA_DIR = 'push/push_train'
+DATA_DIR = '../tfrecord/push_train'
 
 # local output directory
 OUT_DIR = './log'

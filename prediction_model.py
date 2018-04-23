@@ -333,6 +333,10 @@ def scheduled_sample(ground_truth_x, generated_x, batch_size, num_ground_truth):
     New batch with num_ground_truth sampled from ground_truth_x and the rest
     from generated_x.
   """
+  tf.logging.info("-----np.shape(ground_truth_x):%s", np.shape(ground_truth_x))
+  tf.logging.info("-----np.shape(generated_x):%s", np.shape(generated_x)) #=> 0!!!!!!
+  tf.logging.info("-----num_ground_truth:%s", num_ground_truth)
+
   idx = tf.random_shuffle(tf.range(int(batch_size))) #array([ 8,  6, 15, 29,  4,  1, 24, 28,  3,  0, 27, 31,  2, 17, 14,\
                                                      #  21, 26, 30, 16, 13,  5, 12, 11, 23, 20,  7, 18, 19, 25,  9, 22, 10]\
                                                      # ,dtype=int32)
