@@ -29,8 +29,6 @@ from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 
 from moving_mnist_reader import mnist_tfrecord_input
-from prediction_input import build_tfrecord_input
-from prediction_model import construct_model
 from prediction_model import construct_model_ff
 
 # How often to record tensorboard summaries.
@@ -60,7 +58,7 @@ flags.DEFINE_string('pretrained_model', '',
 flags.DEFINE_integer('sequence_length', 3,
                                          'sequence length, including context frames.')
 flags.DEFINE_integer('context_frames', 2, '# of frames before predictions.')
-flags.DEFINE_integer('use_action', 1,
+flags.DEFINE_integer('use_action', 0,
                                          'Whether or not to give the action to the model')
 
 flags.DEFINE_string('model', 'CDNA',
@@ -107,11 +105,11 @@ def mean_squared_error(true, pred):
 class Model(object):
 
     def __init__(self,
-                             images=None,
-                             actions=None,
-                             sequence_length=None,
-                             reuse_scope=None,
-                             prefix=None):
+                 images=None,
+                 # actions=None,
+                 sequence_length=None,
+                 reuse_scope=None,
+                 prefix=None):
 
         if sequence_length is None:
             sequence_length = FLAGS.sequence_length    # 10
@@ -122,18 +120,14 @@ class Model(object):
         self.iter_num = tf.placeholder(tf.float32, [])
         summaries = []
 
-        # Split into timesteps.
-        if FLAGS.use_action:
-            actions = tf.split(axis=1, num_or_size_splits=int(actions.get_shape()[1]), value=actions)
-            actions = [tf.squeeze(act) for act in actions]
-
         images = tf.split(axis=1, num_or_size_splits=int(images.get_shape()[1]), value=images)    # axis =1 !!!!!!
-        images = [tf.squeeze(img) for img in images]
+        # images = [tf.squeeze(img) for img in images]
+        logging.warning("-----np.shape(images1):%s", np.shape(images))
 
         if reuse_scope is None: # if training
             gen_images = construct_model_ff( # len(gen_images) = 9
                     images,
-                    actions,
+                    # actions,
                     iter_num=self.iter_num,
                     k=FLAGS.schedsamp_k,
                     context_frames=FLAGS.context_frames)
@@ -141,7 +135,7 @@ class Model(object):
             with tf.variable_scope(reuse_scope, reuse=True):
                 gen_images = construct_model_ff(
                         images,
-                        actions,
+                        # actions,
                         iter_num=self.iter_num,
                         k=FLAGS.schedsamp_k,
                         context_frames=FLAGS.context_frames)
@@ -178,24 +172,25 @@ class Model(object):
 
 def main(unused_argv):
     logging.warning('Constructing models and inputs.')
-    with tf.variable_scope('model', reuse=None) as training_scope:
-        images, actions = build_tfrecord_input(training=True)    # (32, 10, 64, 64, 3)---(32, 10, 5)---(32, 10, 5)
-        model = Model(images, actions, FLAGS.sequence_length,
-                                    prefix='train')
-
-    with tf.variable_scope('val_model', reuse=None):
-        val_images, val_actions, = build_tfrecord_input(training=False)
-        val_model = Model(val_images, val_actions,
-                                            FLAGS.sequence_length, training_scope, prefix='val')
     # with tf.variable_scope('model', reuse=None) as training_scope:
-    #     images = mnist_tfrecord_input(training=True)    # (32, 10, 64, 64, 3)---(32, 10, 5)---(32, 10, 5)
-    #     model = Model(images, FLAGS.sequence_length,
+    #     images, actions = build_tfrecord_input(training=True)    # (32, 10, 64, 64, 3)---(32, 10, 5)---(32, 10, 5)
+    #     model = Model(images, actions, FLAGS.sequence_length,
     #                                 prefix='train')
     #
     # with tf.variable_scope('val_model', reuse=None):
-    #     val_images = mnist_tfrecord_input(training=False)
-    #     val_model = Model(val_images,
+    #     val_images, val_actions, = build_tfrecord_input(training=False)
+    #     val_model = Model(val_images, val_actions,
     #                                         FLAGS.sequence_length, training_scope, prefix='val')
+    with tf.variable_scope('model', reuse=None) as training_scope:
+        images = mnist_tfrecord_input(MNIST_DIR, training=True, sequence_length=3, batch_size=32)    # (32, 10, 64, 64, 3)---(32, 10, 5)---(32, 10, 5)
+        logging.warning("-----np.shape(images0):%s", np.shape(images))
+        model = Model(images, FLAGS.sequence_length,
+                                    prefix='train')
+
+    with tf.variable_scope('val_model', reuse=None):
+        val_images = mnist_tfrecord_input(MNIST_DIR, training=False, sequence_length=3, batch_size=32)
+        val_model = Model(val_images,
+                                            FLAGS.sequence_length, training_scope, prefix='val')
     logging.warning('Constructing saver.')
     # Make saver.
     saver = tf.train.Saver(
