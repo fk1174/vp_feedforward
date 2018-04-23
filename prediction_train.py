@@ -27,7 +27,8 @@ logging.basicConfig(format='[%(asctime)s] (%(filename)s): |%(levelname)s| %(mess
 
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
-form moving_mnist_reader import mnist_tfrecord_input
+
+from moving_mnist_reader import mnist_tfrecord_input
 from prediction_input import build_tfrecord_input
 from prediction_model import construct_model
 from prediction_model import construct_model_ff
@@ -43,7 +44,7 @@ SAVE_INTERVAL = 2000
 
 # tf record data location:
 DATA_DIR = '../tfrecord/push_train'
-
+MNIST_DIR = '../moving_mnist'
 # local output directory
 OUT_DIR = './log'
 
@@ -122,8 +123,9 @@ class Model(object):
         summaries = []
 
         # Split into timesteps.
-        actions = tf.split(axis=1, num_or_size_splits=int(actions.get_shape()[1]), value=actions)
-        actions = [tf.squeeze(act) for act in actions]
+        if FLAGS.use_action:
+            actions = tf.split(axis=1, num_or_size_splits=int(actions.get_shape()[1]), value=actions)
+            actions = [tf.squeeze(act) for act in actions]
 
         images = tf.split(axis=1, num_or_size_splits=int(images.get_shape()[1]), value=images)    # axis =1 !!!!!!
         images = [tf.squeeze(img) for img in images]
@@ -185,7 +187,15 @@ def main(unused_argv):
         val_images, val_actions, = build_tfrecord_input(training=False)
         val_model = Model(val_images, val_actions,
                                             FLAGS.sequence_length, training_scope, prefix='val')
-
+    # with tf.variable_scope('model', reuse=None) as training_scope:
+    #     images = mnist_tfrecord_input(training=True)    # (32, 10, 64, 64, 3)---(32, 10, 5)---(32, 10, 5)
+    #     model = Model(images, FLAGS.sequence_length,
+    #                                 prefix='train')
+    #
+    # with tf.variable_scope('val_model', reuse=None):
+    #     val_images = mnist_tfrecord_input(training=False)
+    #     val_model = Model(val_images,
+    #                                         FLAGS.sequence_length, training_scope, prefix='val')
     logging.warning('Constructing saver.')
     # Make saver.
     saver = tf.train.Saver(
