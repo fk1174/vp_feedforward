@@ -17,10 +17,13 @@
 
 import numpy as np
 import tensorflow as tf
-
+import logging
+logging.basicConfig(format='[%(asctime)s] (%(filename)s): |%(levelname)s| %(message)s')
 import tensorflow.contrib.slim as slim
 from tensorflow.contrib.layers.python import layers as tf_layers
 from lstm_ops import basic_conv_lstm_cell
+
+
 # Amount to use when lower bounding tensors
 RELU_SHIFT = 1e-12
 
@@ -91,6 +94,7 @@ def construct_model(images,
     reuse = bool(gen_images)
 
     done_warm_start = len(gen_images) > context_frames - 1
+    logging.warning("------np.shape(gen_images):%s", np.shape(gen_images))
     with slim.arg_scope(
         [lstm_func, slim.layers.conv2d, slim.layers.fully_connected,
          tf_layers.layer_norm, slim.layers.conv2d_transpose],
