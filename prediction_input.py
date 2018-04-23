@@ -21,10 +21,8 @@ import os
 import numpy as np
 import tensorflow as tf
 import logging
-tf_logger = logging.getLogger('tensorflow')
-ch = tf_logger.handlers[0]
-ch.setFormatter(logging.Formatter('%(asctime)s (%(name)s) |%(levelname)s| %(message)s'))
-tf.logging.set_verbosity(tf.logging.INFO)
+logging.basicConfig(format='[%(asctime)s] (%(filename)s): |%(levelname)s| %(message)s')
+
 
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile

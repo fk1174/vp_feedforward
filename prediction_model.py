@@ -18,10 +18,8 @@ import hobotrl as hrl
 import numpy as np
 import tensorflow as tf
 import logging
-tf_logger = logging.getLogger('tensorflow')
-ch = tf_logger.handlers[0]
-ch.setFormatter(logging.Formatter('%(asctime)s (%(name)s) |%(levelname)s| %(message)s'))
-tf.logging.set_verbosity(tf.logging.INFO)
+logging.basicConfig(format='[%(asctime)s] (%(filename)s): |%(levelname)s| %(message)s')
+
 
 import tensorflow.contrib.slim as slim
 from tensorflow.contrib.layers.python import layers as tf_layers
@@ -82,10 +80,12 @@ def construct_model_ff(images, # oh 15 FeedFroward
 
   for image, action in zip(images[:-1], actions[:-1]): # images[0,1,2,...,8] , no last images[9]  32, 64, 64, 3->9times
     # Reuse variables after the first timestep.
-    tf.logging.info("-----np.shape(image):%s", np.shape(image)) # 32, 64, 64, 3
+    logging.warning("-----np.shape(image):%s", np.shape(image)) # 32, 64, 64, 3
     reuse = bool(gen_images)
 
     done_warm_start = len(gen_images) > context_frames - 1
+    logging.warning("-----len(gen_images):%s", len(gen_images))
+    logging.warning("-----np.shape(gen_images):%s", np.shape(gen_images))
     with slim.arg_scope(
         [lstm_func, slim.layers.conv2d, slim.layers.fully_connected,
          tf_layers.layer_norm, slim.layers.conv2d_transpose],
@@ -436,9 +436,9 @@ def scheduled_sample(ground_truth_x, generated_x, batch_size, num_ground_truth):
     New batch with num_ground_truth sampled from ground_truth_x and the rest
     from generated_x.
   """
-  tf.logging.info("-----np.shape(ground_truth_x):%s", np.shape(ground_truth_x))
-  tf.logging.info("-----np.shape(generated_x):%s", np.shape(generated_x)) #=> 0!!!!!!
-  tf.logging.info("-----num_ground_truth:%s", num_ground_truth)
+  logging.warning("-----np.shape(ground_truth_x):%s", np.shape(ground_truth_x))
+  logging.warning("-----np.shape(generated_x):%s", np.shape(generated_x)) #=> (0,)!!!!!! true: (32, 128, 128, 3)
+  logging.warning("-----num_ground_truth:%s", num_ground_truth)
 
   idx = tf.random_shuffle(tf.range(int(batch_size))) #array([ 8,  6, 15, 29,  4,  1, 24, 28,  3,  0, 27, 31,  2, 17, 14,\
                                                      #  21, 26, 30, 16, 13,  5, 12, 11, 23, 20,  7, 18, 19, 25,  9, 22, 10]\
