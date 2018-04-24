@@ -70,6 +70,7 @@ def mnist_tfrecord_input(data_dir,
             features={image_name: tf.FixedLenFeature([], tf.string)}
         )
         image = tf.decode_raw(features[image_name], tf.uint8)
+
         image = tf.reshape(image, shape=[ORIGINAL_HEIGHT, ORIGINAL_WIDTH, COLOR_CHAN])
 
         # preprocessing

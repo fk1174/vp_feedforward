@@ -38,7 +38,7 @@ def construct_model_ff(images, # oh 15 FeedFroward
                         iter_num=-1.0,
                         k=-1,
                         context_frames=2):
-    logging.warning("-----np.shape(images):%s", np.shape(images))
+    logging.warning("-----images8:%s", images)
     batch_size, img_height, img_width, color_channels = images[0].get_shape()[0:4]
 
     # Generated robot states and images.
@@ -56,7 +56,7 @@ def construct_model_ff(images, # oh 15 FeedFroward
     for image in images[:-1]: # images[0,1,2,...,8] , no last images[9]    32, 64, 64, 3->9times
         # Reuse variables after the first timestep.
         # tf.reset_default_graph()
-        logging.warning("-----np.shape(image):%s", np.shape(image)) # 32, 64, 64, 3
+        logging.warning("-----np.shape(image5):%s", np.shape(image)) # 32, 64, 64, 3
         reuse = bool(gen_images)
         logging.warning("-----reuse:%s", reuse)
 
@@ -89,13 +89,13 @@ def construct_model_ff(images, # oh 15 FeedFroward
                                                                      l2=l2,
                                                                      var_scope="feature_fc")
 
-                    concat = hrl.network.Utils.layer_fcs(feature_fc, [2048], 8192,
+                    concat = hrl.network.Utils.layer_fcs(feature_fc, [2048], 2048,
                                                                     activation_out=tf.nn.relu,
                                                                     l2=l2,
                                                                     var_scope="concat")
 
                     # 2048 => 128*8*8
-                    concat_deconv = tf.reshape(concat, [32, 8, 8, 128])
+                    concat_deconv = tf.reshape(concat, [32, 4, 4, 128])
                     logging.warning("-----np.shape(concat_deconv):%s", np.shape(concat_deconv))
 
                     output = hrl.utils.Network.conv2ds_transpose(concat_deconv,

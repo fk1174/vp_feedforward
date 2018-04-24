@@ -121,8 +121,9 @@ class Model(object):
         summaries = []
 
         images = tf.split(axis=1, num_or_size_splits=int(images.get_shape()[1]), value=images)    # axis =1 !!!!!!
-        # images = [tf.squeeze(img) for img in images]
-        logging.warning("-----np.shape(images1):%s", np.shape(images))
+        images = [tf.squeeze(img,axis=[1]) for img in images] # axis=[1], only squeezes the dimensions listed
+        logging.warning('------images5:%s',images)
+
 
         if reuse_scope is None: # if training
             gen_images = construct_model_ff( # len(gen_images) = 9
@@ -144,10 +145,10 @@ class Model(object):
         loss, psnr_all = 0.0, 0.0
         # logging.warning("------len(gen_images):%s", len(gen_images)) ====> 9!
         for i, x, gx in zip(
-                                                range(len(gen_images)), # 0,1,...,8
-                                                images[FLAGS.context_frames:], # images[2,3,...9]
-                                                gen_images[FLAGS.context_frames - 1:] # gen_images[1,2,...,8]
-                                                ):
+                            range(len(gen_images)), # 0,1,...,8
+                            images[FLAGS.context_frames:], # images[2,3,...9]
+                            gen_images[FLAGS.context_frames - 1:] # gen_images[1,2,...,8]
+                            ):
             # (0, images[2], gen_images[1] -> 7, images[9], gen_images[8])
             recon_cost = mean_squared_error(x, gx)
             psnr_i = peak_signal_to_noise_ratio(x, gx)
